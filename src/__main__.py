@@ -1,5 +1,3 @@
-# crawler_cli.py
-
 import argparse
 from urllib.parse import urljoin
 
@@ -20,12 +18,8 @@ def main():
                         help='Range for random delay variation.')
     parser.add_argument('--remove-selectors', nargs='*',
                         help='Additional CSS selectors to remove from pages.')
-    parser.add_argument('--similarity-threshold', type=float, default=0.8,
-                        help='Similarity threshold for section comparison (default: 0.8).')
-    parser.add_argument('--common-section-threshold', type=float, default=0.5,
-                        help='Threshold for considering a section common (default: 0.5).')
-    parser.add_argument('--user-agent', default='*',
-                        help='User agent string to use for crawling (default: "*").')
+    parser.add_argument('--similarity-threshold', type=float, default=0.6,
+                        help='Similarity threshold for section comparison (default: 0.6).')
     parser.add_argument('--allowed-paths', nargs='*',
                         help='List of URL paths to include during crawling.')
 
@@ -37,15 +31,15 @@ def main():
         start_url=start_url,
         base_url=args.base_url,
         output_filename=args.output,
-        user_agent=args.user_agent,
+        user_agent=args.user_agent if hasattr(args, 'user_agent') else '*',
         handle_robots_txt=not args.no_robots,
         delay=args.delay,
         delay_range=args.delay_range,
         extra_remove_selectors=args.remove_selectors,
         similarity_threshold=args.similarity_threshold,
-        common_section_threshold=args.common_section_threshold,
-        allowed_paths=args.allowed_paths,
+        allowed_paths=args.allowed_paths
     )
+
 
 if __name__ == '__main__':
     main()
