@@ -1,6 +1,6 @@
 # Documentation Crawler and Converter v.0.2
 
-This tool crawls a documentation website and converts the pages into a single Markdown document. It intelligently removes common sections that appear across multiple pages to avoid duplication, including them once at the beginning of the document.
+This tool crawls a documentation website and converts the pages into a single Markdown document. It intelligently removes common sections that appear across multiple pages to avoid duplication, including them once at the end of the document.
 
 ## Features
 
