@@ -197,22 +197,33 @@ class TestBuildTree(unittest.TestCase):
         self.assertEqual(root.children[0].url, 'http://example.com/page1')
 
 
-class TestTraverseTreeAndWrite(unittest.TestCase):
-    def test_traverse_tree_and_write(self):
+class TestTraverseTreeAndCollect(unittest.TestCase):
+    def test_traverse_tree_and_collect(self):
         # Create a simple tree manually
         root = crawler.PageNode('http://example.com/start')
-        root.sections = [BeautifulSoup('<div>Start Page Content</div>', 'html.parser').div]
-
+        root.sections = [BeautifulSoup('<div><h1>Start Page</h1><p>Start Page Content</p></div>', 'html.parser').div]
+    
         child = crawler.PageNode('http://example.com/page1')
-        child.sections = [BeautifulSoup('<div>Page 1 Content</div>', 'html.parser').div]
+        child.sections = [BeautifulSoup('<div><h1>Page 1</h1><p>Page 1 Content</p></div>', 'html.parser').div]
         root.children.append(child)
+    
+        # Create url_to_anchor mapping
+        url_to_anchor = {}
+        content = crawler.traverse_tree_and_collect(root, url_to_anchor)
+    
+        # Check that the content includes the page content and the anchors
+        self.assertIn('Start Page Content', content)
+        self.assertIn('Page 1 Content', content)
+        self.assertIn('<a id="start-page"></a>', content)
+        self.assertIn('<a id="page-1"></a>', content)
+        self.assertIn('# Start Page', content)
+        self.assertIn('# Page 1', content)
 
-        # Mock file write
-        mock_file = Mock()
-        crawler.traverse_tree_and_write(root, mock_file)
-
-        # Ensure write was called twice (once for root, once for child)
-        self.assertEqual(mock_file.write.call_count, 2)
+        # Check that the anchors are added to url_to_anchor
+        self.assertIn('http://example.com/start', url_to_anchor)
+        self.assertIn('http://example.com/page1', url_to_anchor)
+        self.assertEqual(url_to_anchor['http://example.com/start'], 'start-page')
+        self.assertEqual(url_to_anchor['http://example.com/page1'], 'page-1')
 
 
 class TestCrawlAndConvert(unittest.TestCase):

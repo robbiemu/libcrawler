@@ -165,7 +165,7 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
             continue  # Skip if content couldn't be fetched
 
         soup = BeautifulSoup(page_content, 'html.parser')
-        soup = remove_common_elements(soup, extra_remove_selectors)
+        soup = remove_common_elements(soup, extra_selectors=extra_remove_selectors)
 
         # Extract sections (e.g., divs, sections, articles)
         sections = soup.find_all(['div', 'section', 'article', 'p', 'header', 'footer'])
@@ -251,32 +251,71 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
 
         node.sections = pruned_sections
 
-    # Debugging: Check if common sections are collected
-    print(f"Collected {len(common_sections_content)} common sections")
-
     return root, common_sections_content
 
 
-def traverse_tree_and_write(node, file, visited=None):
-    """Traverses the tree in depth-first order and writes content."""
+def adjust_links(html_content, base_url, url_to_anchor):
+    """Adjusts links in the HTML content."""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    for a in soup.find_all('a', href=True):
+        href = a['href']
+        full_url = urljoin(base_url, href)
+        # Adjust internal links
+        if full_url in url_to_anchor:
+            # Replace with internal link to the anchor
+            a['href'] = '#' + url_to_anchor[full_url]
+        else:
+            # External link or not included, use absolute URL
+            a['href'] = full_url
+    # Similarly adjust image src attributes, if needed
+    for img in soup.find_all('img', src=True):
+        src = img['src']
+        full_src = urljoin(base_url, src)
+        img['src'] = full_src
+    return str(soup)
+
+
+def get_page_title(sections):
+    """Extracts a title from the page sections, if available."""
+    for section in sections:
+        # Look for header tags
+        header = section.find(['h1', 'h2', 'h3'])
+        if header:
+            return header.get_text(strip=True)
+    return None
+
+
+def traverse_tree_and_collect(node, url_to_anchor, visited=None):
+    """Traverses the tree in depth-first order and collects content."""
     if visited is None:
         visited = set()
-
+    content = ''
     if node.url in visited:
-        return
+        return content
     visited.add(node.url)
 
     if node.sections:
         # Combine the pruned sections back into HTML
         page_html = ''.join(str(section) for section in node.sections)
+        # Adjust links in the HTML content
+        page_html = adjust_links(page_html, node.url, url_to_anchor)
         # Convert to Markdown
         try:
-            markdown_content = md(page_html)
-            file.write(markdown_content + '\n\n')
+            # Generate an anchor name for the page
+            page_title = get_page_title(node.sections) or node.url
+            anchor = page_title.strip().replace(' ', '-').lower()
+            url_to_anchor[node.url] = anchor
+
+            markdown_content = f'<a id="{anchor}"></a>\n\n'
+            markdown_content += f'# {page_title}\n\n'
+            markdown_content += md(page_html)
+            content += markdown_content + '\n\n'
         except Exception as e:
             logger.error(f"Failed to convert content to Markdown: {e}")
     for child in node.children:
-        traverse_tree_and_write(child, file, visited)
+        child_content = traverse_tree_and_collect(child, url_to_anchor, visited)
+        content += child_content
+    return content
 
 
 def crawl_and_convert(start_url, base_url, output_filename,
@@ -293,18 +332,24 @@ def crawl_and_convert(start_url, base_url, output_filename,
         allowed_paths
     )
 
-    # Debugging: Check if common sections are being written
-    print(f"Writing {len(common_sections_content)} common sections to the output file")
+    # Create a mapping from URLs to anchors
+    url_to_anchor = {}
 
-    # Traverse the tree and write the content
+    # Traverse the tree and collect the content
+    content = traverse_tree_and_collect(root, url_to_anchor)
+
+    # Open the output file
     with open(output_filename, 'w', encoding='utf-8') as f:
-        # Include common sections once at the beginning
+        # Write the content collected from traversal
+        f.write(content)
+        # Include common sections at the end
         if common_sections_content:
             common_html = ''.join(str(section) for section in common_sections_content)
+            # Adjust links in the common sections
+            common_html = adjust_links(common_html, base_url, url_to_anchor)
             try:
                 markdown_content = md(common_html)
-                f.write('# Common Sections\n\n')
+                f.write('\n\n# Common Sections\n\n')
                 f.write(markdown_content + '\n\n')
             except Exception as e:
                 logger.error(f"Failed to convert common sections to Markdown: {e}")
-        traverse_tree_and_write(root, f)
