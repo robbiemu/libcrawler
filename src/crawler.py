@@ -1,18 +1,21 @@
-# crawler.py
-
 """
 Crawl a webpage that represents API or library documentation and convert the whole chain of pages into a single large markdown document.
 Pages that are not part of the library documentation are excluded.
 """
 
+__version_info__ = ('0', '2', '0')
+__version__ = '.'.join(__version_info__)
+
+
 from bs4 import BeautifulSoup
-from datasketch import MinHash, MinHashLSH
+from collections import defaultdict
+from difflib import SequenceMatcher
 import logging
 from markdownify import markdownify as md
 import random
 import requests
 import time
-from urllib.parse import urljoin, urlparse, urldefrag
+from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 
 
@@ -21,18 +24,35 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
 
+common_selectors = ['header', 'footer', 'nav', '.nav', '.navbar', '.footer']
+
 class PageNode:
     """Represents a page in the documentation tree."""
 
     def __init__(self, url):
         self.url = url
-        self.content = ''
         self.children = []
-        self.sections = []  # List of section elements
+        self.anchor_id = None
 
     def __repr__(self):
         from pprint import pformat
         return pformat(vars(self), indent=4, width=1)
+
+
+def normalize_url(url):
+    """Normalizes the URL by removing fragments, query parameters, and default filenames."""
+    parsed_url = urlparse(url)
+    path = parsed_url.path
+
+    # Remove 'index.html' or 'index.htm' from the end of the path
+    if path.endswith('/index.html') or path.endswith('/index.htm'):
+        path = path[:-len('index.html')]
+    # Remove trailing slashes
+    path = path.rstrip('/')
+
+    # Reconstruct the URL without fragment and query
+    normalized_url = urlunparse((parsed_url.scheme, parsed_url.netloc, path, '', '', ''))
+    return normalized_url
 
 
 def fetch_content(url):
@@ -60,7 +80,7 @@ def get_links(html, current_url, allowed_paths=None):
     for a in anchors:
         href = a['href']
         full_url = urljoin(current_url, href)
-        full_url, _ = urldefrag(full_url)
+        full_url = normalize_url(full_url)
         parsed_url = urlparse(full_url)
 
         if parsed_url.netloc != current_netloc:
@@ -102,12 +122,13 @@ def load_robots_txt(base_url):
     return robots_parser
 
 
-def remove_common_elements(soup, extra_selectors=None):
+def remove_common_elements(soup, extra_remove_selectors=None):
     """Removes specified common elements."""
-    if extra_selectors is not None:
-        selectors = extra_selectors  # Use only extra_selectors
+    if extra_remove_selectors is not None:
+        selectors = extra_remove_selectors  # Use only extra_remove_selectors
     else:
-        selectors = ['header', 'footer', 'nav', '.nav', '.navbar', '.footer']
+        #selectors = ['header', 'footer', 'nav', '.nav', '.navbar', '.footer']
+        selectors = []
 
     for selector in selectors:
         for element in soup.select(selector):
@@ -115,41 +136,26 @@ def remove_common_elements(soup, extra_selectors=None):
     return soup
 
 
-def get_shingles(text, k=5):
-    """Generates k-shingles from text."""
-    words = text.split()
-    shingles = set()
-    for i in range(len(words) - k + 1):
-        shingle = ' '.join(words[i:i + k])
-        shingles.add(shingle)
-    return shingles
-
-
 def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
                delay=1, delay_range=0.5, extra_remove_selectors=None,
-               similarity_threshold=0.8, common_section_threshold=0.5,
                allowed_paths=None):
     visited_links = set()
     root = PageNode(start_url)
-    node_lookup = {start_url: root}
+    node_lookup = {}
+    normalized_start_url = normalize_url(start_url)
+    node_lookup[normalized_start_url] = root
     queue = [root]
 
     robots_parser = load_robots_txt(base_url) if handle_robots_txt else None
 
-    # LSH Index for sections
-    lsh = MinHashLSH(threshold=similarity_threshold, num_perm=128)
-    section_minhashes = {}  # Map section id to MinHash
-    section_occurrences = {}  # Count how many times a section appears
-
-    # Unique identifier for sections
-    section_id_counter = 0
-
-    page_nodes = []  # List to keep track of all page nodes
+    # Store page content in Markdown
+    page_markdowns = {}
+    url_to_anchor = {}
+    anchor_counter = 1
 
     while queue:
         current_node = queue.pop(0)
-        current_link = current_node.url
-        current_link, _ = urldefrag(current_link)
+        current_link = normalize_url(current_node.url)
         if current_link in visited_links:
             continue
         visited_links.add(current_link)
@@ -160,196 +166,219 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
                 continue
 
         logger.info(f'Processing {current_link}')
-        page_content, page_url = fetch_content(current_link)
+        page_content, page_url = fetch_content(current_node.url)
         if not page_content:
             continue  # Skip if content couldn't be fetched
 
         soup = BeautifulSoup(page_content, 'html.parser')
-        soup = remove_common_elements(soup, extra_selectors=extra_remove_selectors)
+        soup = remove_common_elements(soup, extra_remove_selectors=extra_remove_selectors)
 
-        # Extract sections (e.g., divs, sections, articles)
-        sections = soup.find_all(['div', 'section', 'article', 'p', 'header', 'footer'])
-        current_node.sections = sections
-        page_nodes.append(current_node)
+        # Assign anchor ID
+        parsed_url = urlparse(current_link)
+        path = parsed_url.path.strip('/')
+        anchor_name = path.replace('/', '_') or 'home'
+        if anchor_name in url_to_anchor.values():
+            anchor_name += f'_{anchor_counter}'
+            anchor_counter += 1
+        url_to_anchor[current_link] = anchor_name
+        current_node.anchor_id = anchor_name
 
-        for section in sections:
-            text = section.get_text(separator=' ', strip=True)
-            shingles = get_shingles(text)
-            if not shingles:
-                continue  # Skip empty sections
+        # Adjust links in the HTML
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            full_url = urljoin(current_node.url, href)
+            normalized_full_url = normalize_url(full_url)
+            if normalized_full_url in url_to_anchor:
+                # Adjust link to point to anchor
+                anchor = url_to_anchor[normalized_full_url]
+                a['href'] = f'#{anchor}'
+            else:
+                # Ensure external links are absolute
+                if not urlparse(href).netloc:
+                    a['href'] = full_url
 
-            m = MinHash(num_perm=128)
-            for shingle in shingles:
-                m.update(shingle.encode('utf-8'))
-
-            section_id = str(section_id_counter)
-            lsh.insert(section_id, m)
-            section_minhashes[section_id] = m
-            section_id_counter += 1
+        # Convert to Markdown
+        try:
+            markdown_content = md(str(soup))
+            page_markdowns[current_link] = markdown_content
+        except Exception as e:
+            logger.error(f"Failed to convert HTML to Markdown for {current_link}: {e}")
 
         # Extract and process child links
-        child_links = get_links(str(soup), current_link, allowed_paths=allowed_paths)
+        child_links = get_links(str(soup), current_node.url, allowed_paths=allowed_paths)
         for link in child_links:
-            if link not in node_lookup:
+            normalized_link = normalize_url(link)
+            if normalized_link not in node_lookup:
                 child_node = PageNode(link)
-                node_lookup[link] = child_node
+                node_lookup[normalized_link] = child_node
             else:
-                child_node = node_lookup[link]
+                child_node = node_lookup[normalized_link]
             current_node.children.append(child_node)
-            if link not in visited_links and child_node not in queue:
+            if normalized_link not in visited_links and child_node not in queue:
                 queue.append(child_node)
 
         actual_delay = random.uniform(delay - delay_range, delay + delay_range)
         time.sleep(actual_delay)
 
-    # Second pass: Identify common sections
-    for section_id, m in section_minhashes.items():
-        result = lsh.query(m)
-        occurrence_count = len(result)
-        section_occurrences[section_id] = occurrence_count
-
-    total_pages = len(page_nodes)
-    logger.info(f"Total pages processed: {total_pages}")
-
-    # Determine threshold for common sections
-    common_section_threshold_count = total_pages * common_section_threshold
-
-    # Identify common sections
-    common_sections = set()
-    for section_id, count in section_occurrences.items():
-        if count >= common_section_threshold_count:
-            common_sections.add(section_id)
-
-    # Prune common sections from pages and collect one copy of each common section
-    common_sections_content = []
-    collected_common_section_ids = set()
-
-    for node in page_nodes:
-        pruned_sections = []
-        for section in node.sections:
-            text = section.get_text(separator=' ', strip=True)
-            shingles = get_shingles(text)
-            if not shingles:
-                continue
-
-            m = MinHash(num_perm=128)
-            for shingle in shingles:
-                m.update(shingle.encode('utf-8'))
-            result = lsh.query(m)
-            is_common = False
-            for res_id in result:
-                if res_id in common_sections:
-                    is_common = True
-                    # Collect one copy if not already collected
-                    if res_id not in collected_common_section_ids:
-                        common_sections_content.append(section)
-                        collected_common_section_ids.add(res_id)
-                    break
-
-            if not is_common:
-                pruned_sections.append(section)
-
-        node.sections = pruned_sections
-
-    return root, common_sections_content
+    for url, anchor in url_to_anchor.items():
+        for key, content in page_markdowns.items():
+            page_markdowns[key] = content.replace(url, f"#{anchor}")
 
 
-def adjust_links(html_content, base_url, url_to_anchor):
-    """Adjusts links in the HTML content."""
-    soup = BeautifulSoup(html_content, 'html.parser')
-    for a in soup.find_all('a', href=True):
-        href = a['href']
-        full_url = urljoin(base_url, href)
-        # Adjust internal links
-        if full_url in url_to_anchor:
-            # Replace with internal link to the anchor
-            a['href'] = '#' + url_to_anchor[full_url]
-        else:
-            # External link or not included, use absolute URL
-            a['href'] = full_url
-    # Similarly adjust image src attributes, if needed
-    for img in soup.find_all('img', src=True):
-        src = img['src']
-        full_src = urljoin(base_url, src)
-        img['src'] = full_src
-    return str(soup)
+    return page_markdowns, url_to_anchor
 
 
-def get_page_title(sections):
-    """Extracts a title from the page sections, if available."""
-    for section in sections:
-        # Look for header tags
-        header = section.find(['h1', 'h2', 'h3'])
-        if header:
-            return header.get_text(strip=True)
-    return None
+def deduplicate_content(page_markdowns, similarity_threshold=0.6, min_block_length=20):
+    """
+    Deduplicates content across multiple Markdown documents by identifying similar blocks of text.
+    Returns the unique content and the common sections.
+    """
+    # Tokenize content into blocks (e.g., paragraphs)
+    page_blocks = {}
+    all_blocks = []
+    block_to_id = {}
+    id_counter = 0
+
+    for url, content in page_markdowns.items():
+        blocks = [block.strip() for block in content.split('\n\n') if block.strip()]
+        page_blocks[url] = blocks
+        for block in blocks:
+            if block not in block_to_id:
+                block_to_id[block] = id_counter
+                all_blocks.append(block)
+                id_counter += 1
+
+    # Initialize Union-Find data structure
+    parent = [i for i in range(id_counter)]  # parent[i] = i
+
+    def find(u):
+        while parent[u] != u:
+            parent[u] = parent[parent[u]]  # Path compression
+            u = parent[u]
+        return u
+
+    def union(u, v):
+        u_root = find(u)
+        v_root = find(v)
+        if u_root != v_root:
+            parent[v_root] = u_root
+
+    # Compare blocks and union similar ones
+    for i in range(len(all_blocks)):
+        block_i = all_blocks[i]
+        if len(block_i) < min_block_length:
+            continue  # Skip blocks that are too short
+        for j in range(i + 1, len(all_blocks)):
+            block_j = all_blocks[j]
+            if len(block_j) < min_block_length:
+                continue  # Skip blocks that are too short
+            # Compute similarity
+            similarity = SequenceMatcher(None, block_i, block_j).ratio()
+            if similarity >= similarity_threshold:
+                id_i = block_to_id[block_i]
+                id_j = block_to_id[block_j]
+                union(id_i, id_j)
 
 
-def traverse_tree_and_collect(node, url_to_anchor, visited=None):
-    """Traverses the tree in depth-first order and collects content."""
-    if visited is None:
-        visited = set()
-    content = ''
-    if node.url in visited:
-        return content
-    visited.add(node.url)
+    # Build groups of similar blocks
+    group_to_blocks = defaultdict(list)
+    for block, idx in block_to_id.items():
+        group_id = find(idx)
+        group_to_blocks[group_id].append(block)
 
-    if node.sections:
-        # Combine the pruned sections back into HTML
-        page_html = ''.join(str(section) for section in node.sections)
-        # Adjust links in the HTML content
-        page_html = adjust_links(page_html, node.url, url_to_anchor)
-        # Convert to Markdown
-        try:
-            # Generate an anchor name for the page
-            page_title = get_page_title(node.sections) or node.url
-            anchor = page_title.strip().replace(' ', '-').lower()
-            url_to_anchor[node.url] = anchor
+    # Identify common groups (blocks that appear in more than one page)
+    block_occurrences = defaultdict(set)  # group_id -> set of URLs
 
-            markdown_content = f'<a id="{anchor}"></a>\n\n'
-            markdown_content += f'# {page_title}\n\n'
-            markdown_content += md(page_html)
-            content += markdown_content + '\n\n'
-        except Exception as e:
-            logger.error(f"Failed to convert content to Markdown: {e}")
-    for child in node.children:
-        child_content = traverse_tree_and_collect(child, url_to_anchor, visited)
-        content += child_content
-    return content
+    for url, blocks in page_blocks.items():
+        for block in blocks:
+            idx = block_to_id[block]
+            group_id = find(idx)
+            block_occurrences[group_id].add(url)
+
+    # Identify common blocks
+    common_groups = set()
+    for group_id, urls in block_occurrences.items():
+        if len(urls) > 1:
+            common_groups.add(group_id)
+
+    # Get representative block for each group
+    group_representative = {}
+    for group_id, blocks in group_to_blocks.items():
+        # Choose the longest block as representative (or any heuristic)
+        representative = max(blocks, key=len)
+        group_representative[group_id] = representative
+
+    # Remove common blocks from individual pages
+    unique_content = {}
+    for url, blocks in page_blocks.items():
+        unique_blocks = []
+        for block in blocks:
+            idx = block_to_id[block]
+            group_id = find(idx)
+            if group_id not in common_groups:
+                unique_blocks.append(block)
+        unique_content[url] = unique_blocks
+
+    # Collect common blocks (use representatives)
+    common_blocks = [group_representative[group_id] for group_id in common_groups]
+
+    return unique_content, common_blocks
 
 
-def crawl_and_convert(start_url, base_url, output_filename,
-                      user_agent='*', handle_robots_txt=True,
-                      delay=1, delay_range=0.5, extra_remove_selectors=None,
-                      similarity_threshold=0.8, common_section_threshold=0.5,
-                      allowed_paths=None):
-    """Main function to crawl and convert documentation to Markdown."""
-    # Build the tree and identify common sections
-    root, common_sections_content = build_tree(
-        start_url, base_url, user_agent, handle_robots_txt,
-        delay, delay_range, extra_remove_selectors,
-        similarity_threshold, common_section_threshold,
-        allowed_paths
+def traverse_and_build_markdown(unique_content, common_content, url_to_anchor):
+    """
+    Constructs the final Markdown document by combining unique content and common sections.
+    """
+    final_markdown = ""
+
+    # Build the content using the assigned anchors
+    for url, blocks in unique_content.items():
+        anchor = url_to_anchor.get(url, '')
+        if anchor:
+            final_markdown += f'# [Page] <a id="{anchor}">{url}</a>\n\n'
+        final_markdown += '\n\n'.join(blocks)
+        final_markdown += '\n\n'
+
+    # Add common sections at the end
+    if common_content:
+        final_markdown += '# Common Sections\n\n'
+        final_markdown += '\n\n'.join(common_content)
+        final_markdown += '\n'
+
+    return final_markdown
+
+
+def crawl_and_convert(
+    start_url,
+    base_url,
+    output_filename,
+    user_agent='*',
+    handle_robots_txt=True,
+    delay=1,
+    delay_range=0.5,
+    extra_remove_selectors=None,
+    similarity_threshold=0.8,
+    allowed_paths=None
+):
+    # Build the tree and get page_markdowns and url_to_anchor
+    page_markdowns, url_to_anchor = build_tree(
+        start_url=start_url,
+        base_url=base_url,
+        user_agent=user_agent,
+        handle_robots_txt=handle_robots_txt,
+        delay=delay,
+        delay_range=delay_range,
+        extra_remove_selectors=extra_remove_selectors,
+        allowed_paths=allowed_paths
     )
 
-    # Create a mapping from URLs to anchors
-    url_to_anchor = {}
+    # Deduplicate content
+    unique_content, common_content = deduplicate_content(page_markdowns, similarity_threshold)
 
-    # Traverse the tree and collect the content
-    content = traverse_tree_and_collect(root, url_to_anchor)
+    # Build the final Markdown document
+    final_markdown = traverse_and_build_markdown(unique_content, common_content, url_to_anchor)
 
-    # Open the output file
+    # Save to file
     with open(output_filename, 'w', encoding='utf-8') as f:
-        # Write the content collected from traversal
-        f.write(content)
-        # Include common sections at the end
-        if common_sections_content:
-            common_html = ''.join(str(section) for section in common_sections_content)
-            # Adjust links in the common sections
-            common_html = adjust_links(common_html, base_url, url_to_anchor)
-            try:
-                markdown_content = md(common_html)
-                f.write('\n\n# Common Sections\n\n')
-                f.write(markdown_content + '\n\n')
-            except Exception as e:
-                logger.error(f"Failed to convert common sections to Markdown: {e}")
+        f.write(final_markdown)
+
