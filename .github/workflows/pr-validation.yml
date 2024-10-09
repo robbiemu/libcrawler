@@ -16,7 +16,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.x'
+        python-version: '3.'
 
     - name: Install dependencies
       run: |
@@ -26,9 +26,9 @@ jobs:
     - name: Get version from main branch
       id: get_version
       run: |
-        VERSION=$(git show origin/main:src/libcrawler/version.py | grep '__version__' | cut -d\" -f2)
+        VERSION=$(python -c "import importlib; print(importlib.import_module('src.libcrawler.version').__version__)")
         echo "Version: $VERSION"
-        echo "::set-output name=version::$VERSION"
+        echo "$VERSION" > $GITHUB_ENV
 
     - name: Check if branch exists for the current version
       run: |
