@@ -29,7 +29,7 @@ jobs:
 
     - name: Check if branch exists for the current version
       run: |
-        git ls-remote --heads origin refs/heads/${{ steps.get_version.outputs.version }} && exit 1 || true
+        git ls-remote --heads origin refs/heads/v${{ steps.get_version.outputs.version }} && exit 1 || true
 
     - name: Run tests
       run: python -m unittest discover -s src/tests
