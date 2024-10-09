@@ -1,0 +1,25 @@
+[build-system]
+requires = [ "setuptools-scm[toml]>=8.0", "wheel" ]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libcrawler"
+description = "A tool to crawl documentation and convert to Markdown."
+authors = [
+    { name="Robert Collins", email="roberto.tomas.cuentas@gmail.com" }
+]
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Operating System :: OS Independent",
+]
+
+dynamic = ["version", "dependencies"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["libcrawler.egg_info", "libcrawler.tests"]
+
+[project.scripts]
+crawl-docs = "libcrawler.__main__:main"

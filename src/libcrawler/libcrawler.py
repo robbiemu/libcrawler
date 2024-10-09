@@ -3,9 +3,7 @@ Crawl a webpage that represents API or library documentation and convert the who
 Pages that are not part of the library documentation are excluded.
 """
 
-__version_info__ = ('0', '2', '0')
-__version__ = '.'.join(__version_info__)
-
+from .version import __version__
 
 from bs4 import BeautifulSoup
 from collections import defaultdict
@@ -55,10 +53,10 @@ def normalize_url(url):
     return normalized_url
 
 
-def fetch_content(url):
+def fetch_content(url, headers={}):
     """Fetches HTML content from a URL, following redirects."""
     try:
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
         return response.text, response.url  # Return the final redirected URL
     except requests.exceptions.RequestException as e:
@@ -137,8 +135,8 @@ def remove_common_elements(soup, extra_remove_selectors=None):
 
 
 def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
-               delay=1, delay_range=0.5, extra_remove_selectors=None,
-               allowed_paths=None):
+               headers={}, delay=1, delay_range=0.5, 
+               extra_remove_selectors=None, allowed_paths=None):
     visited_links = set()
     root = PageNode(start_url)
     node_lookup = {}
@@ -166,7 +164,7 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
                 continue
 
         logger.info(f'Processing {current_link}')
-        page_content, page_url = fetch_content(current_node.url)
+        page_content, page_url = fetch_content(current_node.url, headers=headers)
         if not page_content:
             continue  # Skip if content couldn't be fetched
 
@@ -354,6 +352,7 @@ def crawl_and_convert(
     output_filename,
     user_agent='*',
     handle_robots_txt=True,
+    headers={},
     delay=1,
     delay_range=0.5,
     extra_remove_selectors=None,
@@ -366,6 +365,7 @@ def crawl_and_convert(
         base_url=base_url,
         user_agent=user_agent,
         handle_robots_txt=handle_robots_txt,
+        headers=headers,
         delay=delay,
         delay_range=delay_range,
         extra_remove_selectors=extra_remove_selectors,
