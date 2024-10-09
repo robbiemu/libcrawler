@@ -1,11 +1,13 @@
 import argparse
+import json
 from urllib.parse import urljoin
 
-from crawler import crawl_and_convert
+from .libcrawler import crawl_and_convert
+from libcrawler.version import __version__
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Crawl documentation and convert to Markdown.')
+    parser = argparse.ArgumentParser(description=f'Crawl documentation and convert to Markdown. v{__version__}')
     parser.add_argument('base_url', help='The base URL of the documentation site.')
     parser.add_argument('starting_point', help='The starting path of the documentation.')
     parser.add_argument('-o', '--output', default='documentation.md',
@@ -23,7 +25,26 @@ def main():
     parser.add_argument('--allowed-paths', nargs='*',
                         help='List of URL paths to include during crawling.')
 
+    headers_group = parser.add_mutually_exclusive_group(required=True)
+    headers_group.add_argument('--headers-file', type=str, help='Path to a JSON file containing headers. Only one of --headers-file or --headers-json can be used.')
+    headers_group.add_argument('--headers-json', type=json.loads, help='Raw JSON string representing the headers. Only one of --headers-file or --headers-json can be used.')
+
     args = parser.parse_args()
+
+    headers = {}
+    if args.headers_file:
+        try:
+            with open(args.headers_file, 'r') as file:
+                headers = json.load(file)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Error loading headers from file: {e}")
+            return
+    elif args.headers_json:
+        try:
+            headers = json.loads(args.headers_json)
+        except json.JSONDecodeError as e:
+            print(f"Invalid JSON format for --headers-json: {e}")
+            return
 
     start_url = urljoin(args.base_url, args.starting_point)
 
@@ -33,6 +54,7 @@ def main():
         output_filename=args.output,
         user_agent=args.user_agent if hasattr(args, 'user_agent') else '*',
         handle_robots_txt=not args.no_robots,
+        headers=headers,
         delay=args.delay,
         delay_range=args.delay_range,
         extra_remove_selectors=args.remove_selectors,

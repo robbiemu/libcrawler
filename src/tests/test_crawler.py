@@ -1,5 +1,3 @@
-# test_crawler.py
-
 from bs4 import BeautifulSoup
 import os
 import logging
@@ -8,15 +6,19 @@ import unittest
 from unittest.mock import patch, Mock
 from urllib.parse import urljoin
 
-import crawler
-from crawler import common_selectors
+__package__ = ''
+
+from src.libcrawler.libcrawler import \
+    build_tree, common_selectors, crawl_and_convert, deduplicate_content, \
+    fetch_content, get_links, is_allowed_by_robots, normalize_url, \
+    remove_common_elements, traverse_and_build_markdown
 
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)
 
 class TestFetchContent(unittest.TestCase):
-    @patch('crawler.requests.get')
+    @patch('src.libcrawler.libcrawler.requests.get')
     def test_fetch_content_success(self, mock_get):
         # Set up the mock response
         mock_response = Mock()
@@ -26,24 +28,48 @@ class TestFetchContent(unittest.TestCase):
         mock_get.return_value = mock_response
 
         # Call the function
-        content, url = crawler.fetch_content('http://example.com/test')
+        content, url = fetch_content('http://example.com/test')
 
         # Assertions
         self.assertEqual(content, '<html><body>Test content</body></html>')
         self.assertEqual(url, 'http://example.com/test')
 
-    @patch('crawler.requests.get')
+        # Ensure requests.get was called without headers
+        mock_get.assert_called_with('http://example.com/test', headers={})
+
+    @patch('src.libcrawler.libcrawler.requests.get')
+    def test_fetch_content_with_headers(self, mock_get):
+        # Set up the mock response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '<html><body>Test content with headers</body></html>'
+        mock_response.url = 'http://example.com/test'
+        mock_get.return_value = mock_response
+
+        # Define headers
+        headers = {'User-Agent': 'test-agent'}
+
+        # Call the function with headers
+        content, url = fetch_content('http://example.com/test', headers=headers)
+
+        # Assertions
+        self.assertEqual(content, '<html><body>Test content with headers</body></html>')
+        self.assertEqual(url, 'http://example.com/test')
+
+        # Ensure requests.get was called with the headers
+        mock_get.assert_called_with('http://example.com/test', headers=headers)
+
+    @patch('src.libcrawler.libcrawler.requests.get')
     def test_fetch_content_failure(self, mock_get):
         # Set up the mock response to raise an exception
         mock_get.side_effect = requests.exceptions.RequestException('Error')
 
         # Call the function
-        content, url = crawler.fetch_content('http://example.com/test')
+        content, url = fetch_content('http://example.com/test')
 
         # Assertions
         self.assertIsNone(content)
         self.assertIsNone(url)
-
 
 class TestGetLinks(unittest.TestCase):
     def test_get_links_all_paths(self):
@@ -53,7 +79,7 @@ class TestGetLinks(unittest.TestCase):
         <a href="http://otherdomain.com/page3">Page 3</a>
         '''
         base_url = 'http://example.com'
-        links = crawler.get_links(html, base_url)
+        links = get_links(html, base_url)
         expected_links = {
             'http://example.com/page1',
             'http://example.com/page2',
@@ -68,7 +94,7 @@ class TestGetLinks(unittest.TestCase):
         '''
         base_url = 'http://example.com'
         allowed_paths = ['/docs/', '/api/']
-        links = crawler.get_links(html, base_url, allowed_paths=allowed_paths)
+        links = get_links(html, base_url, allowed_paths=allowed_paths)
         expected_links = {
             'http://example.com/docs/page1',
             'http://example.com/api/page2',
@@ -84,29 +110,27 @@ class TestGetLinks(unittest.TestCase):
         '''
         base_url = 'http://example.com'
         allowed_paths = ['/docs', '/api']
-        links = crawler.get_links(html, base_url, allowed_paths=allowed_paths)
+        links = get_links(html, base_url, allowed_paths=allowed_paths)
         expected_links = {
             'http://example.com/docs',
             'http://example.com/api',
         }
         self.assertEqual(links, expected_links)
 
-
 class TestIsAllowedByRobots(unittest.TestCase):
     def test_is_allowed_by_robots(self):
         robots_parser = Mock()
         robots_parser.can_fetch.return_value = True
         url = 'http://example.com/page'
-        self.assertTrue(crawler.is_allowed_by_robots(url, robots_parser=robots_parser))
+        self.assertTrue(is_allowed_by_robots(url, robots_parser=robots_parser))
         robots_parser.can_fetch.assert_called_with('*', '/page')
 
     def test_is_disallowed_by_robots(self):
         robots_parser = Mock()
         robots_parser.can_fetch.return_value = False
         url = 'http://example.com/secret'
-        self.assertFalse(crawler.is_allowed_by_robots(url, robots_parser=robots_parser))
+        self.assertFalse(is_allowed_by_robots(url, robots_parser=robots_parser))
         robots_parser.can_fetch.assert_called_with('*', '/secret')
-
 
 class TestRemoveCommonElements(unittest.TestCase):
     def test_remove_common_elements(self):
@@ -124,7 +148,7 @@ class TestRemoveCommonElements(unittest.TestCase):
         </html>
         '''
         soup = BeautifulSoup(html, 'html.parser')
-        soup = crawler.remove_common_elements(soup, extra_remove_selectors=common_selectors)
+        soup = remove_common_elements(soup, extra_remove_selectors=common_selectors)
         result = str(soup)
         self.assertNotIn('Header', result)
         self.assertNotIn('Navigation', result)
@@ -143,19 +167,18 @@ class TestRemoveCommonElements(unittest.TestCase):
         </html>
         '''
         soup = BeautifulSoup(html, 'html.parser')
-        soup = crawler.remove_common_elements(soup, extra_remove_selectors=['header', 'footer', '.ad'])
+        soup = remove_common_elements(soup, extra_remove_selectors=['header', 'footer', '.ad'])
         result = str(soup)
         self.assertNotIn('Header', result)
         self.assertNotIn('Ad Content', result)
         self.assertNotIn('Footer', result)
         self.assertIn('Main content', result)
 
-
 class TestBuildTree(unittest.TestCase):
-    @patch('crawler.fetch_content')
+    @patch('src.libcrawler.libcrawler.fetch_content')
     def test_build_tree(self, mock_fetch_content):
         # Mock fetch_content to return predefined HTML content
-        def side_effect(url):
+        def side_effect(url, headers={}):
             if url == 'http://example.com/start':
                 html = '''
                 <html>
@@ -182,13 +205,14 @@ class TestBuildTree(unittest.TestCase):
         mock_fetch_content.side_effect = side_effect
 
         # Run build_tree
-        page_markdowns, url_to_anchor = crawler.build_tree(
+        page_markdowns, url_to_anchor = build_tree(
             start_url='http://example.com/start',
             base_url='http://example.com',
             handle_robots_txt=False,
             delay=0,
             delay_range=0,
-            allowed_paths=None
+            allowed_paths=None,
+            headers={}
         )
 
         # Check that page_markdowns contains two entries
@@ -199,6 +223,55 @@ class TestBuildTree(unittest.TestCase):
         self.assertIn('Start Page Content', page_markdowns['http://example.com/start'])
         self.assertIn('Page 1 Content', page_markdowns['http://example.com/page1'])
 
+    @patch('src.libcrawler.libcrawler.fetch_content')
+    def test_build_tree_with_headers(self, mock_fetch_content):
+        # Mock fetch_content to return predefined HTML content
+        def side_effect(url, headers={}):
+            if url == 'http://example.com/start':
+                html = '''
+                <html>
+                    <body>
+                        <div>Start Page Content</div>
+                        <a href="/page1">Page 1</a>
+                    </body>
+                </html>
+                '''
+                return html, url
+            elif url == 'http://example.com/page1':
+                html = '''
+                <html>
+                    <body>
+                        <div>Page 1 Content</div>
+                        <a href="/start">Start Page</a>
+                    </body>
+                </html>
+                '''
+                return html, url
+            else:
+                return '', url
+
+        mock_fetch_content.side_effect = side_effect
+
+        headers = {'User-Agent': 'test-agent'}
+
+        # Run build_tree with headers
+        page_markdowns, url_to_anchor = build_tree(
+            start_url='http://example.com/start',
+            base_url='http://example.com',
+            handle_robots_txt=False,
+            delay=0,
+            delay_range=0,
+            allowed_paths=None,
+            headers=headers
+        )
+
+        # Check that fetch_content was called with correct headers
+        calls = mock_fetch_content.call_args_list
+        for call in calls:
+            _args, kwargs = call
+            # fetch_content(url, headers={})
+            self.assertIn('headers', kwargs)
+            self.assertEqual(kwargs['headers'], headers)
 
 class TestDeduplicateContent(unittest.TestCase):
     def test_deduplicate_content_no_common(self):
@@ -207,7 +280,7 @@ class TestDeduplicateContent(unittest.TestCase):
             'http://example.com/page1': 'Page 1 Content\n\nUnique to Page1',
             'http://example.com/page2': 'Page 2 Content\n\nUnique to Page2',
         }
-        unique_content, common_content = crawler.deduplicate_content(
+        unique_content, common_content = deduplicate_content(
             page_markdowns, similarity_threshold=0.99, min_block_length=20
         )
 
@@ -219,14 +292,13 @@ class TestDeduplicateContent(unittest.TestCase):
         self.assertEqual(unique_content['http://example.com/page1'], ['Page 1 Content', 'Unique to Page1'])
         self.assertEqual(unique_content['http://example.com/page2'], ['Page 2 Content', 'Unique to Page2'])
 
-
     def test_deduplicate_content_with_common(self):
         page_markdowns = {
             'http://example.com/start': 'Common Content\n\nStart Page Content',
             'http://example.com/page1': 'Common Content\n\nPage 1 Content',
             'http://example.com/page2': 'Common Content\n\nPage 2 Content',
         }
-        unique_content, common_content = crawler.deduplicate_content(
+        unique_content, common_content = deduplicate_content(
             page_markdowns, similarity_threshold=0.99, min_block_length=20
         )
 
@@ -237,8 +309,6 @@ class TestDeduplicateContent(unittest.TestCase):
         self.assertEqual(unique_content['http://example.com/start'], ['Start Page Content'])
         self.assertEqual(unique_content['http://example.com/page1'], ['Page 1 Content'])
         self.assertEqual(unique_content['http://example.com/page2'], ['Page 2 Content'])
-
-
 
 class TestTraverseAndBuildMarkdown(unittest.TestCase):
     def test_traverse_and_build_markdown(self):
@@ -253,7 +323,7 @@ class TestTraverseAndBuildMarkdown(unittest.TestCase):
             'http://example.com/page1': 'page1',
             'http://example.com/page2': 'page2',
         }
-        final_markdown = crawler.traverse_and_build_markdown(unique_content, common_content, url_to_anchor)
+        final_markdown = traverse_and_build_markdown(unique_content, common_content, url_to_anchor)
 
         # Check that anchors are correctly added
         self.assertIn('<a id="start">http://example.com/start</a>', final_markdown)
@@ -268,7 +338,6 @@ class TestTraverseAndBuildMarkdown(unittest.TestCase):
         # Check that common sections are added at the end
         self.assertIn('# Common Sections', final_markdown)
         self.assertIn('Common Content', final_markdown)
-
 
 class TestCrawlAndConvert(unittest.TestCase):
     def setUp(self):
@@ -329,7 +398,7 @@ class TestCrawlAndConvert(unittest.TestCase):
                 <ul>
                     <li><a id="start" href="/start">Start Page</a></li>
                     <li><a id="page1" href="/page1">Page 1</a></li>
-                    <li><a id="page2" href="/page2">Page 2</a></li>
+                    <li><a id="page2">Page 2</a></li>
                 </ul>
             </body>
         </html>
@@ -347,26 +416,24 @@ class TestCrawlAndConvert(unittest.TestCase):
         </html>
         """
 
-
     def tearDown(self):
         if os.path.exists(self.output_filename):
             os.remove(self.output_filename)
 
-
-    @patch('crawler.fetch_content')
+    @patch('src.libcrawler.libcrawler.fetch_content')
     def test_crawl_and_convert(self, mock_fetch_content):
         # Define side effect for fetch_content
-        def side_effect(url):
-            normalized_url = crawler.normalize_url(url)
-            if normalized_url == crawler.normalize_url(self.start_url):
+        def side_effect(url, headers={}):
+            normalized_url = normalize_url(url)
+            if normalized_url == normalize_url(self.start_url):
                 return self.html_start, url
-            elif normalized_url == crawler.normalize_url(urljoin(self.base_url, 'page1')):
+            elif normalized_url == normalize_url(urljoin(self.base_url, 'page1')):
                 return self.html_page1, urljoin(self.base_url, 'page1')
-            elif normalized_url == crawler.normalize_url(urljoin(self.base_url, 'page2')):
+            elif normalized_url == normalize_url(urljoin(self.base_url, 'page2')):
                 return self.html_page2, urljoin(self.base_url, 'page2')
-            elif normalized_url == crawler.normalize_url(urljoin(self.base_url, 'page3.html')):
+            elif normalized_url == normalize_url(urljoin(self.base_url, 'page3.html')):
                 return self.html_page3, urljoin(self.base_url, 'page3.html')
-            elif normalized_url == crawler.normalize_url(urljoin(self.base_url, 'index.html')):
+            elif normalized_url == normalize_url(urljoin(self.base_url, 'index.html')):
                 # index.html redirects to start
                 return self.html_start, self.start_url
             else:
@@ -374,8 +441,10 @@ class TestCrawlAndConvert(unittest.TestCase):
 
         mock_fetch_content.side_effect = side_effect
 
+        headers = {'User-Agent': 'test-agent'}
+
         # Run the crawler with appropriate similarity threshold
-        crawler.crawl_and_convert(
+        crawl_and_convert(
             start_url=self.start_url,
             base_url=self.base_url,
             output_filename=self.output_filename,
@@ -384,14 +453,20 @@ class TestCrawlAndConvert(unittest.TestCase):
             delay_range=0,
             extra_remove_selectors=['header', 'footer', '.footer'],
             similarity_threshold=0.6,  # Increased threshold
-            allowed_paths=None
+            allowed_paths=None,
+            headers=headers
         )
+
+        # Check that fetch_content was called with headers
+        calls = mock_fetch_content.call_args_list
+        for call in calls:
+            args, kwargs = call
+            self.assertIn('headers', kwargs)
+            self.assertEqual(kwargs['headers'], headers)
 
         # Read the content
         with open(self.output_filename, 'r', encoding='utf-8') as f:
             content = f.read()
-
-            print(content)
 
             # Check that common sections are included once at the end
             self.assertIn('# Common Sections', content)
@@ -407,13 +482,9 @@ class TestCrawlAndConvert(unittest.TestCase):
             self.assertIn('[Page 1](#page1)', content)
             self.assertIn('[Page 2](#page2)', content)
 
-
             # Ensure that common content is not duplicated
-            #occurrences = content.count('### nav')
-            #self.assertEqual(occurrences, 1)
             occurrences = content.count('Common Content')
             self.assertEqual(occurrences, 1)
-
 
 if __name__ == '__main__':
     unittest.main()

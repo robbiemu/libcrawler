@@ -1,0 +1,40 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.6'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Get version from version.py
+      id: get_version
+      run: echo "::set-output name=version::$(python -c "import importlib; print(importlib.import_module('src.libcrawler.version').__version__)")"
+
+    - name: Check if branch exists for the current version
+      run: |
+        git ls-remote --heads origin refs/heads/${{ steps.get_version.outputs.version }} && exit 1 || true
+
+    - name: Run tests
+      run: python -m unittest discover -s src/tests
+
+    - name: Install package and test entry point
+      run: |
+        pip install .
+        crawl-docs --help
