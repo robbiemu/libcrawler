@@ -5,6 +5,8 @@ on:
   release:
     types: [created]
 
+workflow_dispatch:   
+
 permissions:
   contents: read
   id-token: write  # Required for OIDC-based authentication
