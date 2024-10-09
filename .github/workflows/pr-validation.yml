@@ -25,7 +25,10 @@ jobs:
 
     - name: Get version from main branch
       id: get_version
-      run: echo "::set-output name=version::$(git show origin/main:src/libcrawler/version.py | grep '__version__' | cut -d\" \" -f3 | tr -d '\n')"
+      run: |
+        VERSION=$(git show origin/main:src/libcrawler/version.py | grep '__version__' | cut -d\" -f2)
+        echo "Version: $VERSION"
+        echo "::set-output name=version::$VERSION"
 
     - name: Check if branch exists for the current version
       run: |
