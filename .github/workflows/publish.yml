@@ -3,6 +3,10 @@ name: Release to PyPI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write  # Grant permissions to write an OIDC token
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -18,14 +22,16 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip setuptools wheel twine
+        python -m pip install --upgrade pip setuptools wheel build twine
 
     - name: Build package
       run: |
-        python setup.py sdist bdist_wheel
+        python -m build
 
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
+    - name: Publish to PyPI using OIDC
+      env:
+        TWINE_USERNAME: "__token__"
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      run: |
+        # This step uses the OIDC token to authenticate with PyPI
+        python -m twine upload --repository pypi dist/*
