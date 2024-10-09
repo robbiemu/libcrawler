@@ -5,7 +5,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # Grant permissions to write an OIDC token
+  id-token: write  # Grant permissions to generate an OIDC token
 
 jobs:
   release:
@@ -22,16 +22,15 @@ jobs:
 
     - name: Install dependencies
       run: |
+        # Install required packages, including twine for publishing
         python -m pip install --upgrade pip setuptools wheel build twine
 
     - name: Build package
       run: |
+        # Use 'build' to create source and wheel distributions
         python -m build
 
     - name: Publish to PyPI using OIDC
-      env:
-        TWINE_USERNAME: "__token__"
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
       run: |
-        # This step uses the OIDC token to authenticate with PyPI
+        # Use 'twine' to upload the built distributions to PyPI
         python -m twine upload --repository pypi dist/*
