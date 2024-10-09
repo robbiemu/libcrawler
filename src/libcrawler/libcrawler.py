@@ -71,9 +71,9 @@ def get_links(html, current_url, allowed_paths=None):
     current_netloc = urlparse(current_url).netloc
     links = set()
 
-    # Normalize allowed paths (remove trailing slashes)
+    # Do not normalize allowed paths (keep trailing slashes)
     if allowed_paths:
-        allowed_paths = [path.rstrip('/') for path in allowed_paths]
+        allowed_paths = [path.rstrip('/') + '/' if not path.endswith('/') else path for path in allowed_paths]
 
     for a in anchors:
         href = a['href']
@@ -87,9 +87,9 @@ def get_links(html, current_url, allowed_paths=None):
         # Normalize parsed_url.path (remove trailing slash)
         normalized_path = parsed_url.path.rstrip('/')
 
-        # If allowed_paths is specified, only include paths that start with allowed_paths
         if allowed_paths:
-            if not any(normalized_path.startswith(path) for path in allowed_paths):
+            # Check for exact match or if the path starts with allowed path followed by '/'
+            if not any(normalized_path == path.rstrip('/') or normalized_path.startswith(path.rstrip('/') + '/') for path in allowed_paths):
                 continue
 
         links.add(full_url)
