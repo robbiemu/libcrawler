@@ -33,3 +33,4 @@ jobs:
       with:
         repository-url: https://upload.pypi.org/legacy/
         environment: "Any"  # Match with the environment specified in PyPI
+        verbose: true
