@@ -41,7 +41,7 @@ def main():
             return
     elif args.headers_json:
         try:
-            headers = json.loads(args.headers_json)
+            headers = args.headers_json
         except json.JSONDecodeError as e:
             print(f"Invalid JSON format for --headers-json: {e}")
             return

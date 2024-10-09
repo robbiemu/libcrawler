@@ -117,6 +117,23 @@ class TestGetLinks(unittest.TestCase):
         }
         self.assertEqual(links, expected_links)
 
+    def test_get_links_disallowed_similar_paths(self):
+        html = '''
+        <a href="/langgraph/page1">Langgraph Page 1</a>
+        <a href="/langgraphjs/page2">LanggraphJS Page 2</a>
+        <a href="/langgraph-tools/page3">Langgraph Tools Page 3</a>
+        <a href="/langgraph">Langgraph Home</a>
+        <a href="/langgraphjavascript">Langgraph JavaScript</a>
+        '''
+        base_url = 'http://example.com'
+        allowed_paths = ['/langgraph/']
+        links = get_links(html, base_url, allowed_paths=allowed_paths)
+        expected_links = {
+            'http://example.com/langgraph/page1',
+            'http://example.com/langgraph',  # Include the exact path
+        }
+        self.assertEqual(links, expected_links)
+
 class TestIsAllowedByRobots(unittest.TestCase):
     def test_is_allowed_by_robots(self):
         robots_parser = Mock()
