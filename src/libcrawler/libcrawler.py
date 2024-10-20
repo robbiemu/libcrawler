@@ -53,8 +53,12 @@ def normalize_url(url):
     return normalized_url
 
 
-def fetch_content(url, headers={}):
+def fetch_content(url, user_agent=None, headers={}):
     """Fetches HTML content from a URL, following redirects."""
+    # Harmonize user-agent with headers
+    if user_agent:
+        headers.setdefault('User-Agent', user_agent)
+    
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -134,9 +138,8 @@ def remove_common_elements(soup, extra_remove_selectors=None):
     return soup
 
 
-def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
-               headers={}, delay=1, delay_range=0.5, 
-               extra_remove_selectors=None, allowed_paths=None):
+def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True, headers={}, delay=1, delay_range=0.5, 
+               extra_remove_selectors=None, allowed_paths=None, ignore_paths=[]):
     visited_links = set()
     root = PageNode(start_url)
     node_lookup = {}
@@ -146,6 +149,10 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
 
     robots_parser = load_robots_txt(base_url) if handle_robots_txt else None
 
+    # Harmonize User-agent and Headers
+    if user_agent:
+        headers.setdefault('User-Agent', user_agent)
+
     # Store page content in Markdown
     page_markdowns = {}
     url_to_anchor = {}
@@ -154,9 +161,14 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
     while queue:
         current_node = queue.pop(0)
         current_link = normalize_url(current_node.url)
+
         if current_link in visited_links:
             continue
         visited_links.add(current_link)
+
+        if any(ignore_path in current_link for ignore_path in ignore_paths):
+            logger.info(f"Skipping {current_link} matching ignore_paths")
+            continue  
 
         if handle_robots_txt and robots_parser:
             if not is_allowed_by_robots(current_link, user_agent, robots_parser):
@@ -165,8 +177,8 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
 
         logger.info(f'Processing {current_link}')
         page_content, page_url = fetch_content(current_node.url, headers=headers)
-        if not page_content:
-            continue  # Skip if content couldn't be fetched
+        if not page_content or (page_url and any(ignore_path in page_url for ignore_path in ignore_paths)):
+            continue  
 
         soup = BeautifulSoup(page_content, 'html.parser')
         soup = remove_common_elements(soup, extra_remove_selectors=extra_remove_selectors)
