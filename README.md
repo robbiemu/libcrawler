@@ -9,6 +9,7 @@ This tool crawls a documentation website and converts the pages into a single Ma
 - Customizable threshold for similarity.
 - Configurable selectors to remove specific elements from pages.
 - Supports robots.txt compliance with an option to ignore it.
+- **NEW in v0.3.3**: Ability to skip URLs based on ignore-paths both pre-fetch (before requesting content) and post-fetch (after redirects).
 
 ## Installation
 
@@ -113,6 +114,8 @@ crawl-docs BASE_URL STARTING_POINT [OPTIONS]
 - `--remove-selectors SELECTOR [SELECTOR ...]`: Additional CSS selectors to remove from pages.
 - `--similarity-threshold SIMILARITY_THRESHOLD`: Similarity threshold for section comparison (default: 0.8).
 - `--allowed-paths PATH [PATH ...]`: List of URL paths to include during crawling.
+- `--ignore-paths PATH [PATH ...]`: List of URL paths to skip during crawling, either before or after fetching content.
+- `--user-agent USER_AGENT`: Specify a custom User-Agent string (which will be harmonized with any additional headers).
 - `--headers-file FILE`: Path to a JSON file containing optional headers. Only one of `--headers-file` or `--headers-json` can be used.
 - `--headers-json JSON` (JSON string): Optional headers as JSON
 
@@ -140,6 +143,14 @@ crawl-docs https://example.com /docs/ -o output.md \
 ```bash
 crawl-docs https://example.com / -o output.md \
     --allowed-paths "/docs/" "/api/"
+```
+
+#### Skipping Pre-Fetch and Post-Fetch URLs with Ignore Paths
+
+```bash
+Copiar código
+crawl-docs https://example.com /docs/ -o output.md \
+    --ignore-paths "/old/" "/legacy/"
 ```
 
 ### Dependencies

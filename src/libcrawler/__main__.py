@@ -22,16 +22,22 @@ def main():
                         help='Additional CSS selectors to remove from pages.')
     parser.add_argument('--similarity-threshold', type=float, default=0.6,
                         help='Similarity threshold for section comparison (default: 0.6).')
-    parser.add_argument('--allowed-paths', nargs='*',
+    parser.add_argument('--allowed-paths', nargs='*', 
                         help='List of URL paths to include during crawling.')
+    parser.add_argument('--ignore-paths', nargs='*',
+                        help='List of URL paths to exclude from crawling.')
 
-    headers_group = parser.add_mutually_exclusive_group(required=True)
-    headers_group.add_argument('--headers-file', type=str, help='Path to a JSON file containing headers. Only one of --headers-file or --headers-json can be used.')
-    headers_group.add_argument('--headers-json', type=json.loads, help='Raw JSON string representing the headers. Only one of --headers-file or --headers-json can be used.')
+    parser.add_argument('--user-agent', type=str, help='Custom User-Agent string.')
+    headers_group = parser.add_mutually_exclusive_group()
+    headers_group.add_argument('--headers-file', type=str, 
+                               help='Path to a JSON file containing headers.')
+    headers_group.add_argument('--headers-json', type=json.loads,
+                               help='Raw JSON string representing the headers.')
 
     args = parser.parse_args()
 
-    headers = {}
+    # Adjust logic for handling headers
+    headers = None
     if args.headers_file:
         try:
             with open(args.headers_file, 'r') as file:
@@ -48,6 +54,7 @@ def main():
 
     start_url = urljoin(args.base_url, args.starting_point)
 
+    # Adjust crawl_and_convert call to handle ignore-paths and optional headers
     crawl_and_convert(
         start_url=start_url,
         base_url=args.base_url,
@@ -59,7 +66,8 @@ def main():
         delay_range=args.delay_range,
         extra_remove_selectors=args.remove_selectors,
         similarity_threshold=args.similarity_threshold,
-        allowed_paths=args.allowed_paths
+        allowed_paths=args.allowed_paths,
+        ignore_paths=args.ignore_paths  # Pass the ignore-paths argument
     )
 
 

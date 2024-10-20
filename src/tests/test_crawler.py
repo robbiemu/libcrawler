@@ -71,6 +71,64 @@ class TestFetchContent(unittest.TestCase):
         self.assertIsNone(content)
         self.assertIsNone(url)
 
+    @patch('src.libcrawler.libcrawler.requests.get')
+    def test_user_agent_harmonization(self, mock_get):
+        # Mock response setup
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '<html><body>Test content with headers and user-agent</body></html>'
+        mock_get.return_value = mock_response
+
+        # Headers without user-agent
+        headers = {'Accept': 'text/html'}
+        user_agent = 'test-agent'
+
+        # Call the function with user-agent and headers
+        content, url = fetch_content('http://example.com/test', user_agent=user_agent, headers=headers)
+
+        # Ensure the user-agent is added to the headers
+        expected_headers = {'Accept': 'text/html', 'User-Agent': 'test-agent'}
+        mock_get.assert_called_with('http://example.com/test', headers=expected_headers)
+
+        # Assert content is fetched correctly
+        self.assertEqual(content, '<html><body>Test content with headers and user-agent</body></html>')
+
+class TestIgnorePaths(unittest.TestCase):
+    def setUp(self):
+        self.start_url = 'http://example.com/start'
+        self.base_url = 'http://example.com'
+        # The ignore_paths can now contain partial matches
+        self.ignore_paths = ['/ignore-me', '/skip-this']
+
+@patch('src.libcrawler.libcrawler.fetch_content')
+def test_ignore_paths_pre_and_post_fetch(self, mock_fetch_content):
+    # Mock the fetch_content to simulate redirects and actual content
+    mock_fetch_content.side_effect = [
+        ('<html><body>Start Page</body></html>', 'http://example.com/start'),  # First URL
+        ('<html><body>Ignored Page</body></html>', 'http://example.com/ignore-me/page'),  # Ignored after redirect
+        ('<html><body>Another Ignored Page</body></html>', 'http://example.com/skip-this/page2'),  # Ignored after redirect
+        ('<html><body>Allowed Page</body></html>', 'http://example.com/allowed-page')  # Not ignored
+    ]
+
+    # Run the build_tree function
+    result_tree = build_tree(
+        start_url=self.start_url,
+        base_url=self.base_url,
+        ignore_paths=self.ignore_paths
+    )
+
+    # Check that the first URL (pre-fetch) was skipped entirely
+    self.assertEqual(mock_fetch_content.call_count, 3)
+
+    # Check that the ignored URLs are not in the result tree (post-fetch)
+    for node in result_tree.values():
+        self.assertNotIn('http://example.com/ignore-me/page', node.url)
+        self.assertNotIn('http://example.com/skip-this/page2', node.url)
+
+    # Check that non-ignored URLs are present in the result tree
+    self.assertIn('http://example.com/start', result_tree)
+    self.assertIn('http://example.com/allowed-page', [node.url for node in result_tree.values()])
+
 class TestGetLinks(unittest.TestCase):
     def test_get_links_all_paths(self):
         html = '''
