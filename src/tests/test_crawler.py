@@ -523,12 +523,10 @@ class TestCrawlAndConvert(unittest.TestCase):
             start_url=self.start_url,
             base_url=self.base_url,
             output_filename=self.output_filename,
-            handle_robots_txt=False,
             delay=0,
             delay_range=0,
             extra_remove_selectors=['header', 'footer', '.footer'],
             similarity_threshold=0.6,  # Increased threshold
-            allowed_paths=None,
             headers=headers
         )
 
