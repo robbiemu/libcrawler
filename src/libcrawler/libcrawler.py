@@ -138,8 +138,8 @@ def remove_common_elements(soup, extra_remove_selectors=None):
     return soup
 
 
-def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True, headers={}, delay=1, delay_range=0.5, 
-               extra_remove_selectors=None, allowed_paths=None, ignore_paths=[]):
+def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True, 
+               headers={}, delay=1, delay_range=0.5, extra_remove_selectors=None, allowed_paths=None, ignore_paths=None):
     visited_links = set()
     root = PageNode(start_url)
     node_lookup = {}
@@ -166,6 +166,8 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True, head
             continue
         visited_links.add(current_link)
 
+        if ignore_paths is None:
+            ignore_paths = []
         if any(ignore_path in current_link for ignore_path in ignore_paths):
             logger.info(f"Skipping {current_link} matching ignore_paths")
             continue  
