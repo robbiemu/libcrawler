@@ -369,7 +369,8 @@ def crawl_and_convert(
     delay_range=0.5,
     extra_remove_selectors=None,
     similarity_threshold=0.8,
-    allowed_paths=None
+    allowed_paths=None,
+    ignore_paths=None
 ):
     # Build the tree and get page_markdowns and url_to_anchor
     page_markdowns, url_to_anchor = build_tree(
@@ -381,7 +382,8 @@ def crawl_and_convert(
         delay=delay,
         delay_range=delay_range,
         extra_remove_selectors=extra_remove_selectors,
-        allowed_paths=allowed_paths
+        allowed_paths=allowed_paths,
+        ignore_paths=ignore_paths
     )
 
     # Deduplicate content

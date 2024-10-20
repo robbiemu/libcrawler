@@ -145,7 +145,7 @@ crawl-docs https://example.com / -o output.md \
     --allowed-paths "/docs/" "/api/"
 ```
 
-#### Skipping Pre-Fetch and Post-Fetch URLs with Ignore Paths
+#### Skipping URLs with Ignore Paths
 
 ```bash
 Copiar código
