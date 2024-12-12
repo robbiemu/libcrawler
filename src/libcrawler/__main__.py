@@ -1,3 +1,4 @@
+import asyncio
 import argparse
 import json
 from urllib.parse import urljoin
@@ -18,6 +19,7 @@ def main():
                         help='Delay between requests in seconds.')
     parser.add_argument('--delay-range', type=float, default=0.5,
                         help='Range for random delay variation.')
+    parser.add_argument('--interval', type=int, help='Time step used in wait for DOM to stablize, in milliseconds (default: 1000 ms)')
     parser.add_argument('--remove-selectors', nargs='*',
                         help='Additional CSS selectors to remove from pages.')
     parser.add_argument('--similarity-threshold', type=float, default=0.6,
@@ -55,7 +57,7 @@ def main():
     start_url = urljoin(args.base_url, args.starting_point)
 
     # Adjust crawl_and_convert call to handle ignore-paths and optional headers
-    crawl_and_convert(
+    asyncio.run(crawl_and_convert(
         start_url=start_url,
         base_url=args.base_url,
         output_filename=args.output,
@@ -68,7 +70,7 @@ def main():
         similarity_threshold=args.similarity_threshold,
         allowed_paths=args.allowed_paths,
         ignore_paths=args.ignore_paths  # Pass the ignore-paths argument
-    )
+    ))
 
 
 if __name__ == '__main__':

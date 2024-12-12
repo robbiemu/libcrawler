@@ -1,9 +1,10 @@
+import asyncio
 from bs4 import BeautifulSoup
 import os
 import logging
-import requests
+from playwright.async_api import async_playwright
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, AsyncMock, Mock
 from urllib.parse import urljoin
 
 __package__ = ''
@@ -17,81 +18,136 @@ from src.libcrawler.libcrawler import \
 # Disable logging during tests
 logging.disable(logging.CRITICAL)
 
+
 class TestFetchContent(unittest.TestCase):
-    @patch('src.libcrawler.libcrawler.requests.get')
-    def test_fetch_content_success(self, mock_get):
-        # Set up the mock response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = '<html><body>Test content</body></html>'
-        mock_response.url = 'http://example.com/test'
-        mock_get.return_value = mock_response
 
-        # Call the function
-        content, url = fetch_content('http://example.com/test')
+    @patch('src.libcrawler.libcrawler.async_playwright')
+    def test_fetch_content_success(self, mock_playwright):
+        # Mock the async_playwright context
+        mock_playwright_instance = AsyncMock()
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
 
-        # Assertions
+        # Configure the mock chain
+        mock_playwright.return_value.__aenter__.return_value = mock_playwright_instance
+        mock_playwright_instance.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
+
+        # Mock page content and URL
+        mock_page.content.return_value = '<html><body>Test content</body></html>'
+        mock_page.url = 'http://example.com/test'
+
+        # Run the fetch_content function asynchronously
+        content, url = asyncio.run(fetch_content('http://example.com/test'))
+
+        # Assertions to verify the Playwright API calls
+        mock_playwright_instance.chromium.launch.assert_awaited_once()
+        mock_browser.new_context.assert_awaited_once_with(user_agent=None, extra_http_headers={})
+        mock_context.new_page.assert_awaited_once()
+        mock_page.goto.assert_awaited_once_with('http://example.com/test', wait_until='domcontentloaded')
+        mock_page.content.assert_awaited_once()
+
+        # Assertions for the function output
         self.assertEqual(content, '<html><body>Test content</body></html>')
         self.assertEqual(url, 'http://example.com/test')
 
-        # Ensure requests.get was called without headers
-        mock_get.assert_called_with('http://example.com/test', headers={})
+    @patch('src.libcrawler.libcrawler.async_playwright')
+    def test_fetch_content_with_headers(self, mock_playwright):
+        # Mock the async_playwright context
+        mock_playwright_instance = AsyncMock()
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
 
-    @patch('src.libcrawler.libcrawler.requests.get')
-    def test_fetch_content_with_headers(self, mock_get):
-        # Set up the mock response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = '<html><body>Test content with headers</body></html>'
-        mock_response.url = 'http://example.com/test'
-        mock_get.return_value = mock_response
+        # Configure the mock chain
+        mock_playwright.return_value.__aenter__.return_value = mock_playwright_instance
+        mock_playwright_instance.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
+
+        # Mock page content and URL
+        mock_page.content.return_value = '<html><body>Test content with headers</body></html>'
+        mock_page.url = 'http://example.com/test'
 
         # Define headers
         headers = {'User-Agent': 'test-agent'}
 
-        # Call the function with headers
-        content, url = fetch_content('http://example.com/test', headers=headers)
+        # Run the fetch_content function asynchronously
+        content, url = asyncio.run(fetch_content('http://example.com/test', headers=headers))
 
-        # Assertions
+        # Assertions to verify the Playwright API calls
+        mock_playwright_instance.chromium.launch.assert_awaited_once()
+        mock_browser.new_context.assert_awaited_once_with(user_agent=None, extra_http_headers=headers)
+        mock_context.new_page.assert_awaited_once()
+        mock_page.goto.assert_awaited_once_with('http://example.com/test', wait_until='domcontentloaded')
+        mock_page.content.assert_awaited_once()
+
+        # Assertions for the function output
         self.assertEqual(content, '<html><body>Test content with headers</body></html>')
         self.assertEqual(url, 'http://example.com/test')
 
-        # Ensure requests.get was called with the headers
-        mock_get.assert_called_with('http://example.com/test', headers=headers)
+    @patch('src.libcrawler.libcrawler.async_playwright')
+    def test_fetch_content_failure(self, mock_playwright):
+        # Mock the async_playwright context
+        mock_playwright_instance = AsyncMock()
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
 
-    @patch('src.libcrawler.libcrawler.requests.get')
-    def test_fetch_content_failure(self, mock_get):
-        # Set up the mock response to raise an exception
-        mock_get.side_effect = requests.exceptions.RequestException('Error')
+        # Configure the mock chain
+        mock_playwright.return_value.__aenter__.return_value = mock_playwright_instance
+        mock_playwright_instance.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
 
-        # Call the function
-        content, url = fetch_content('http://example.com/test')
+        # Simulate a failure
+        mock_page.goto.side_effect = Exception('Error')
 
-        # Assertions
+        # Run the fetch_content function asynchronously
+        content, url = asyncio.run(fetch_content('http://example.com/test'))
+
+        # Assertions for the function output
         self.assertIsNone(content)
         self.assertIsNone(url)
 
-    @patch('src.libcrawler.libcrawler.requests.get')
-    def test_user_agent_harmonization(self, mock_get):
-        # Mock response setup
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = '<html><body>Test content with headers and user-agent</body></html>'
-        mock_get.return_value = mock_response
+    @patch('src.libcrawler.libcrawler.async_playwright')
+    def test_user_agent_harmonization(self, mock_playwright):
+        # Mock the async_playwright context
+        mock_playwright_instance = AsyncMock()
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+
+        # Configure the mock chain
+        mock_playwright.return_value.__aenter__.return_value = mock_playwright_instance
+        mock_playwright_instance.chromium.launch.return_value = mock_browser
+        mock_browser.new_context.return_value = mock_context
+        mock_context.new_page.return_value = mock_page
+
+        # Mock page content and URL
+        mock_page.content.return_value = '<html><body>Test content with headers and user-agent</body></html>'
+        mock_page.url = 'http://example.com/test'
 
         # Headers without user-agent
         headers = {'Accept': 'text/html'}
         user_agent = 'test-agent'
 
-        # Call the function with user-agent and headers
-        content, url = fetch_content('http://example.com/test', user_agent=user_agent, headers=headers)
+        # Run the fetch_content function asynchronously
+        content, url = asyncio.run(fetch_content('http://example.com/test', user_agent=user_agent, headers=headers))
 
-        # Ensure the user-agent is added to the headers
-        expected_headers = {'Accept': 'text/html', 'User-Agent': 'test-agent'}
-        mock_get.assert_called_with('http://example.com/test', headers=expected_headers)
+        # Assertions to verify the Playwright API calls
+        mock_playwright_instance.chromium.launch.assert_awaited_once()
+        mock_browser.new_context.assert_awaited_once_with(user_agent=user_agent, extra_http_headers=headers)
+        mock_context.new_page.assert_awaited_once()
+        mock_page.goto.assert_awaited_once_with('http://example.com/test', wait_until='domcontentloaded')
+        mock_page.content.assert_awaited_once()
 
-        # Assert content is fetched correctly
+        # Assertions for the function output
         self.assertEqual(content, '<html><body>Test content with headers and user-agent</body></html>')
+        self.assertEqual(url, 'http://example.com/test')
+
 
 class TestIgnorePaths(unittest.TestCase):
     def setUp(self):
@@ -253,7 +309,7 @@ class TestBuildTree(unittest.TestCase):
     @patch('src.libcrawler.libcrawler.fetch_content')
     def test_build_tree(self, mock_fetch_content):
         # Mock fetch_content to return predefined HTML content
-        def side_effect(url, headers={}):
+        def side_effect(url, headers={}, interval=None):
             if url == 'http://example.com/start':
                 html = '''
                 <html>
@@ -280,7 +336,7 @@ class TestBuildTree(unittest.TestCase):
         mock_fetch_content.side_effect = side_effect
 
         # Run build_tree
-        page_markdowns, url_to_anchor = build_tree(
+        page_markdowns, _url_to_anchor = asyncio.run(build_tree(
             start_url='http://example.com/start',
             base_url='http://example.com',
             handle_robots_txt=False,
@@ -288,7 +344,7 @@ class TestBuildTree(unittest.TestCase):
             delay_range=0,
             allowed_paths=None,
             headers={}
-        )
+        ))
 
         # Check that page_markdowns contains two entries
         self.assertIn('http://example.com/start', page_markdowns)
@@ -301,7 +357,7 @@ class TestBuildTree(unittest.TestCase):
     @patch('src.libcrawler.libcrawler.fetch_content')
     def test_build_tree_with_headers(self, mock_fetch_content):
         # Mock fetch_content to return predefined HTML content
-        def side_effect(url, headers={}):
+        def side_effect(url, headers={}, interval=None):
             if url == 'http://example.com/start':
                 html = '''
                 <html>
@@ -330,7 +386,7 @@ class TestBuildTree(unittest.TestCase):
         headers = {'User-Agent': 'test-agent'}
 
         # Run build_tree with headers
-        page_markdowns, url_to_anchor = build_tree(
+        _page_markdowns, _url_to_anchor = asyncio.run(build_tree(
             start_url='http://example.com/start',
             base_url='http://example.com',
             handle_robots_txt=False,
@@ -338,7 +394,7 @@ class TestBuildTree(unittest.TestCase):
             delay_range=0,
             allowed_paths=None,
             headers=headers
-        )
+        ))
 
         # Check that fetch_content was called with correct headers
         calls = mock_fetch_content.call_args_list
@@ -498,7 +554,7 @@ class TestCrawlAndConvert(unittest.TestCase):
     @patch('src.libcrawler.libcrawler.fetch_content')
     def test_crawl_and_convert(self, mock_fetch_content):
         # Define side effect for fetch_content
-        def side_effect(url, headers={}):
+        def side_effect(url, headers={}, interval=None):
             normalized_url = normalize_url(url)
             if normalized_url == normalize_url(self.start_url):
                 return self.html_start, url
@@ -519,21 +575,23 @@ class TestCrawlAndConvert(unittest.TestCase):
         headers = {'User-Agent': 'test-agent'}
 
         # Run the crawler with appropriate similarity threshold
-        crawl_and_convert(
-            start_url=self.start_url,
-            base_url=self.base_url,
-            output_filename=self.output_filename,
-            delay=0,
-            delay_range=0,
-            extra_remove_selectors=['header', 'footer', '.footer'],
-            similarity_threshold=0.6,  # Increased threshold
-            headers=headers
+        asyncio.run(
+            crawl_and_convert(
+                start_url=self.start_url,
+                base_url=self.base_url,
+                output_filename=self.output_filename,
+                delay=0,
+                delay_range=0,
+                extra_remove_selectors=['header', 'footer', '.footer'],
+                similarity_threshold=0.6,  # Increased threshold
+                headers=headers
+            )
         )
 
         # Check that fetch_content was called with headers
         calls = mock_fetch_content.call_args_list
         for call in calls:
-            args, kwargs = call
+            _args, kwargs = call
             self.assertIn('headers', kwargs)
             self.assertEqual(kwargs['headers'], headers)
 
