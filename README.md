@@ -1,21 +1,26 @@
-# Documentation Crawler and Converter v.0.3
+# Documentation Crawler and Converter v1.0.0
 
 This tool crawls a documentation website and converts the pages into a single Markdown document. It intelligently removes common sections that appear across multiple pages to avoid duplication, including them once at the end of the document.
 
+**Version 1.0.0** introduces significant improvements, including support for JavaScript-rendered pages using Playwright and a fully asynchronous implementation.
+
 ## Features
 
+- **JavaScript Rendering**: Utilizes Playwright to accurately render pages that rely on JavaScript, ensuring complete and up-to-date content capture.
 - Crawls documentation websites and combines pages into a single Markdown file.
-- Removes common sections that appear across many pages, including them once at the beginning.
-- Customizable threshold for similarity.
+- Removes common sections that appear across many pages, including them once at the end of the document.
+- Customizable threshold for similarity to control deduplication sensitivity.
 - Configurable selectors to remove specific elements from pages.
 - Supports robots.txt compliance with an option to ignore it.
-- **NEW in v0.3.3**: Ability to skip URLs based on ignore-paths both pre-fetch (before requesting content) and post-fetch (after redirects).
+  ## **NEW in v1.0.0**:
+  - Javascript rendering, waiting for page to stabilize before scraping.
+  - Asynchronous Operation: Fully asynchronous methods enhance performance and scalability during the crawling process.
 
 ## Installation
 
 ### Prerequisites
 
-- **Python 3.6 or higher** is required.
+- **Python 3.7 or higher** is required.
 - (Optional) It is recommended to use a virtual environment to avoid dependency conflicts with other projects.
 
 ### 1. Installing the Package with `pip`
@@ -49,11 +54,13 @@ It is recommended to use a virtual environment to isolate the package and its de
 2. **Activate the virtual environment**:
 
    - On **macOS/Linux**:
+
      ```bash
      source venv/bin/activate
      ```
 
    - On **Windows**:
+
      ```bash
      .\venv\Scripts\activate
      ```
@@ -66,7 +73,17 @@ It is recommended to use a virtual environment to isolate the package and its de
 
    This ensures that all dependencies are installed within the virtual environment.
 
-### 4. Installing from PyPI
+### 4. Installing Playwright Browsers
+
+After installing the package, you need to install the necessary Playwright browser binaries:
+
+```bash
+playwright install
+```
+
+This command downloads the required browser binaries (Chromium, Firefox, and WebKit) used by Playwright for rendering pages.
+
+### 5. Installing from PyPI
 
 Once the package is published on PyPI, you can install it directly using:
 
@@ -74,7 +91,7 @@ Once the package is published on PyPI, you can install it directly using:
 pip install libcrawler
 ```
 
-### 5. Upgrading the Package
+### 6. Upgrading the Package
 
 To upgrade the package to the latest version, use:
 
@@ -84,7 +101,7 @@ pip install --upgrade libcrawler
 
 This will upgrade the package to the newest version available.
 
-### 6. Verifying the Installation
+### 7. Verifying the Installation
 
 You can verify that the package has been installed correctly by running:
 
@@ -102,7 +119,7 @@ crawl-docs BASE_URL STARTING_POINT [OPTIONS]
 
 ### Arguments
 
-- `BASE_URL`: The base URL of the documentation site (e.g., https://example.com).
+- `BASE_URL`: The base URL of the documentation site (e.g., _https://example.com_).
 - `STARTING_POINT`: The starting path of the documentation (e.g., /docs/).
 
 ### Optional Arguments
@@ -117,16 +134,18 @@ crawl-docs BASE_URL STARTING_POINT [OPTIONS]
 - `--ignore-paths PATH [PATH ...]`: List of URL paths to skip during crawling, either before or after fetching content.
 - `--user-agent USER_AGENT`: Specify a custom User-Agent string (which will be harmonized with any additional headers).
 - `--headers-file FILE`: Path to a JSON file containing optional headers. Only one of `--headers-file` or `--headers-json` can be used.
-- `--headers-json JSON` (JSON string): Optional headers as JSON
+- `--headers-json JSON` (JSON string): Optional headers as JSON.
 
 ### Examples
 
 #### Basic Usage
+
 ```bash
 crawl-docs https://example.com /docs/ -o output.md
 ```
 
 #### Adjusting Thresholds
+
 ```bash
 crawl-docs https://example.com /docs/ -o output.md \
     --similarity-threshold 0.7 \
@@ -134,12 +153,14 @@ crawl-docs https://example.com /docs/ -o output.md \
 ```
 
 #### Specifying Extra Selectors to Remove
+
 ```bash
 crawl-docs https://example.com /docs/ -o output.md \
     --remove-selectors ".sidebar" ".ad-banner"
 ```
 
 #### Limiting to Specific Paths
+
 ```bash
 crawl-docs https://example.com / -o output.md \
     --allowed-paths "/docs/" "/api/"
@@ -148,24 +169,61 @@ crawl-docs https://example.com / -o output.md \
 #### Skipping URLs with Ignore Paths
 
 ```bash
-Copiar código
 crawl-docs https://example.com /docs/ -o output.md \
     --ignore-paths "/old/" "/legacy/"
 ```
 
-### Dependencies
+## Dependencies
 
-- Python 3.6 or higher
-- BeautifulSoup4
-- datasketch
-- requests
-- markdownify
+- **Python 3.7 or higher**
+- [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/bs4/doc/) for HTML parsing.
+- [markdownify](https://github.com/matthewwithanm/python-markdownify) for converting HTML to Markdown.
+- [Playwright](https://playwright.dev/python/docs/intro) for headless browser automation and JavaScript rendering.
+- [aiofiles](https://github.com/Tinche/aiofiles) for asynchronous file operations.
+- Additional dependencies are listed in `requirements.txt`.
 
-Install dependencies using:
+### Installing Dependencies
+
+After setting up your environment, install all required dependencies using:
+
 ```bash
 pip install -r requirements.txt
 ```
 
+**Note**: Ensure you have installed the Playwright browsers by running `playwright install` as mentioned in the Installation section.
+
 ## License
 
-This project is licensed under the LGPLv3.
+This project is licensed under the LGPLv3. See the [LICENSE]\(LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please follow these steps to contribute:
+
+1. **Fork the repository** on GitHub.
+2. **Clone your fork** to your local machine:
+   ```bash
+   git clone https://github.com/your-username/libcrawler.git
+   ```
+3. **Create a new branch** for your feature or bugfix:
+   ```bash
+   git checkout -b feature-name
+   ```
+4. **Make your changes** and **commit** them with clear messages:
+   ```bash
+   git commit -m "Add feature X"
+   ```
+5. **Push** your changes to your fork:
+   ```bash
+   git push origin feature-name
+   ```
+6. **Open a Pull Request** on the original repository describing your changes.
+
+Please ensure your code adheres to the project's coding standards and includes appropriate tests.
+
+## Acknowledgements
+
+- [BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/bs4/doc/) for HTML parsing.
+- [Playwright](https://playwright.dev/) for headless browser automation.
+- [Markdownify](https://github.com/matthewwithanm/python-markdownify) for converting HTML to Markdown.
+- [aiofiles](https://github.com/Tinche/aiofiles) for asynchronous file operations.

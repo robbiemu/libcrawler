@@ -1,3 +1,4 @@
+import asyncio
 import argparse
 import json
 from urllib.parse import urljoin
@@ -6,7 +7,7 @@ from .libcrawler import crawl_and_convert
 from libcrawler.version import __version__
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description=f'Crawl documentation and convert to Markdown. v{__version__}')
     parser.add_argument('base_url', help='The base URL of the documentation site.')
     parser.add_argument('starting_point', help='The starting path of the documentation.')
@@ -72,4 +73,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

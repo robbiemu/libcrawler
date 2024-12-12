@@ -5,14 +5,15 @@ Pages that are not part of the library documentation are excluded.
 
 from .version import __version__
 
+import aiofiles
 from bs4 import BeautifulSoup
 from collections import defaultdict
 from difflib import SequenceMatcher
 import logging
 from markdownify import markdownify as md
+from playwright.async_api import async_playwright
 import random
-import requests
-import time
+import asyncio  # Changed from time to asyncio
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 common_selectors = ['header', 'footer', 'nav', '.nav', '.navbar', '.footer']
+
 
 class PageNode:
     """Represents a page in the documentation tree."""
@@ -53,17 +55,43 @@ def normalize_url(url):
     return normalized_url
 
 
-def fetch_content(url, user_agent=None, headers={}):
-    """Fetches HTML content from a URL, following redirects."""
+async def wait_for_stable_dom(page, timeout=10000, interval=500):
+    """Waits for the DOM to stabilize using MutationObserver."""
+    await page.evaluate(f"""
+        new Promise(resolve => {{
+            const observer = new MutationObserver((mutations, obs) => {{
+                if (document.readyState === 'complete') {{
+                    obs.disconnect(); // Stop observing
+                    resolve();
+                }}
+            }});
+            observer.observe(document.body, {{ childList: true, subtree: true }});
+            setTimeout(resolve, {timeout}); // Fallback timeout
+        }});
+    """)
+    await asyncio.sleep(interval / 1000)  # Allow additional time if necessary
+
+
+async def fetch_content(url, user_agent=None, headers=None):
+    """Fetches HTML content from a URL using Playwright, following redirects."""
+    if headers is None:
+        headers = {}
     # Harmonize user-agent with headers
     if user_agent:
-        headers.setdefault('User-Agent', user_agent)
-    
+        headers['User-Agent'] = user_agent
+
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.text, response.url  # Return the final redirected URL
-    except requests.exceptions.RequestException as e:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            context = await browser.new_context(user_agent=user_agent, extra_http_headers=headers)
+            page = await context.new_page()
+            await page.goto(url, wait_until='domcontentloaded')
+            await wait_for_stable_dom(page)  # Wait for the DOM to stabilize
+            content = await page.content()
+            final_url = page.url
+            await browser.close()
+            return content, final_url
+    except Exception as e:
         logger.error(f"Failed to fetch {url}: {e}")
         return None, None
 
@@ -138,8 +166,10 @@ def remove_common_elements(soup, extra_remove_selectors=None):
     return soup
 
 
-def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True, 
-               headers={}, delay=1, delay_range=0.5, extra_remove_selectors=None, allowed_paths=None, ignore_paths=None):
+async def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True, 
+               headers=None, delay=1, delay_range=0.5, extra_remove_selectors=None, allowed_paths=None, ignore_paths=None):
+    if headers is None:
+        headers = {}
     visited_links = set()
     root = PageNode(start_url)
     node_lookup = {}
@@ -178,7 +208,7 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
                 continue
 
         logger.info(f'Processing {current_link}')
-        page_content, page_url = fetch_content(current_node.url, headers=headers)
+        page_content, page_url = await fetch_content(current_node.url, headers=headers)  # Added await
         if not page_content or (page_url and any(ignore_path in page_url for ignore_path in ignore_paths)):
             continue  
 
@@ -230,7 +260,7 @@ def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True,
                 queue.append(child_node)
 
         actual_delay = random.uniform(delay - delay_range, delay + delay_range)
-        time.sleep(actual_delay)
+        await asyncio.sleep(actual_delay)  # Replaced time.sleep with await asyncio.sleep
 
     for url, anchor in url_to_anchor.items():
         for key, content in page_markdowns.items():
@@ -360,13 +390,13 @@ def traverse_and_build_markdown(unique_content, common_content, url_to_anchor):
     return final_markdown
 
 
-def crawl_and_convert(
+async def crawl_and_convert(
     start_url,
     base_url,
     output_filename,
     user_agent='*',
     handle_robots_txt=True,
-    headers={},
+    headers=None,
     delay=1,
     delay_range=0.5,
     extra_remove_selectors=None,
@@ -375,7 +405,7 @@ def crawl_and_convert(
     ignore_paths=None
 ):
     # Build the tree and get page_markdowns and url_to_anchor
-    page_markdowns, url_to_anchor = build_tree(
+    page_markdowns, url_to_anchor = await build_tree(  # Added await
         start_url=start_url,
         base_url=base_url,
         user_agent=user_agent,
@@ -395,6 +425,5 @@ def crawl_and_convert(
     final_markdown = traverse_and_build_markdown(unique_content, common_content, url_to_anchor)
 
     # Save to file
-    with open(output_filename, 'w', encoding='utf-8') as f:
-        f.write(final_markdown)
-
+    async with aiofiles.open(output_filename, 'w', encoding='utf-8') as f:  # Use aiofiles for async file operations
+        await f.write(final_markdown)
