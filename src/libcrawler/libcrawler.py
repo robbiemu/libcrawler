@@ -13,7 +13,7 @@ import logging
 from markdownify import markdownify as md
 from playwright.async_api import async_playwright
 import random
-import asyncio  # Changed from time to asyncio
+import asyncio 
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 
@@ -55,8 +55,10 @@ def normalize_url(url):
     return normalized_url
 
 
-async def wait_for_stable_dom(page, timeout=10000, interval=500):
+async def wait_for_stable_dom(page, timeout=10000, interval=None):
     """Waits for the DOM to stabilize using MutationObserver."""
+    if interval is None:
+        interval = 1000
     await page.evaluate(f"""
         new Promise(resolve => {{
             const observer = new MutationObserver((mutations, obs) => {{
@@ -72,7 +74,7 @@ async def wait_for_stable_dom(page, timeout=10000, interval=500):
     await asyncio.sleep(interval / 1000)  # Allow additional time if necessary
 
 
-async def fetch_content(url, user_agent=None, headers=None):
+async def fetch_content(url, user_agent=None, headers=None, interval=None):
     """Fetches HTML content from a URL using Playwright, following redirects."""
     if headers is None:
         headers = {}
@@ -86,7 +88,7 @@ async def fetch_content(url, user_agent=None, headers=None):
             context = await browser.new_context(user_agent=user_agent, extra_http_headers=headers)
             page = await context.new_page()
             await page.goto(url, wait_until='domcontentloaded')
-            await wait_for_stable_dom(page)  # Wait for the DOM to stabilize
+            await wait_for_stable_dom(page, interval=interval)  # Wait for the DOM to stabilize
             content = await page.content()
             final_url = page.url
             await browser.close()
@@ -167,7 +169,8 @@ def remove_common_elements(soup, extra_remove_selectors=None):
 
 
 async def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True, 
-               headers=None, delay=1, delay_range=0.5, extra_remove_selectors=None, allowed_paths=None, ignore_paths=None):
+               headers=None, delay=1, delay_range=0.5, interval=None, 
+               extra_remove_selectors=None, allowed_paths=None, ignore_paths=None):
     if headers is None:
         headers = {}
     visited_links = set()
@@ -208,7 +211,7 @@ async def build_tree(start_url, base_url, user_agent='*', handle_robots_txt=True
                 continue
 
         logger.info(f'Processing {current_link}')
-        page_content, page_url = await fetch_content(current_node.url, headers=headers)  # Added await
+        page_content, page_url = await fetch_content(current_node.url, headers=headers, interval=interval)  
         if not page_content or (page_url and any(ignore_path in page_url for ignore_path in ignore_paths)):
             continue  
 
@@ -399,13 +402,14 @@ async def crawl_and_convert(
     headers=None,
     delay=1,
     delay_range=0.5,
+    interval=None,
     extra_remove_selectors=None,
     similarity_threshold=0.8,
     allowed_paths=None,
     ignore_paths=None
 ):
     # Build the tree and get page_markdowns and url_to_anchor
-    page_markdowns, url_to_anchor = await build_tree(  # Added await
+    page_markdowns, url_to_anchor = await build_tree(  
         start_url=start_url,
         base_url=base_url,
         user_agent=user_agent,
@@ -413,6 +417,7 @@ async def crawl_and_convert(
         headers=headers,
         delay=delay,
         delay_range=delay_range,
+        interval=interval,
         extra_remove_selectors=extra_remove_selectors,
         allowed_paths=allowed_paths,
         ignore_paths=ignore_paths

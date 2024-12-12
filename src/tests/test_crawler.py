@@ -309,7 +309,7 @@ class TestBuildTree(unittest.TestCase):
     @patch('src.libcrawler.libcrawler.fetch_content')
     def test_build_tree(self, mock_fetch_content):
         # Mock fetch_content to return predefined HTML content
-        def side_effect(url, headers={}):
+        def side_effect(url, headers={}, interval=None):
             if url == 'http://example.com/start':
                 html = '''
                 <html>
@@ -357,7 +357,7 @@ class TestBuildTree(unittest.TestCase):
     @patch('src.libcrawler.libcrawler.fetch_content')
     def test_build_tree_with_headers(self, mock_fetch_content):
         # Mock fetch_content to return predefined HTML content
-        def side_effect(url, headers={}):
+        def side_effect(url, headers={}, interval=None):
             if url == 'http://example.com/start':
                 html = '''
                 <html>
@@ -554,7 +554,7 @@ class TestCrawlAndConvert(unittest.TestCase):
     @patch('src.libcrawler.libcrawler.fetch_content')
     def test_crawl_and_convert(self, mock_fetch_content):
         # Define side effect for fetch_content
-        def side_effect(url, headers={}):
+        def side_effect(url, headers={}, interval=None):
             normalized_url = normalize_url(url)
             if normalized_url == normalize_url(self.start_url):
                 return self.html_start, url
