@@ -1,5 +1,6 @@
 [build-system]
-requires = [ "setuptools-scm[toml]>=8.0", "wheel" ]
+# We remove setuptools-scm because the version is now explicitly sourced from your version.py file.
+requires = [ "setuptools>=61.0", "wheel" ]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,11 +16,17 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+# This tells the build system that version and dependencies are defined elsewhere.
 dynamic = ["version", "dependencies"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 exclude = ["libcrawler.egg_info", "libcrawler.tests"]
+
+# This new section provides the explicit instructions for finding the dynamic fields.
+[tool.setuptools.dynamic]
+version = {attr = "libcrawler.version.__version__"}
+dependencies = {file = ["requirements.txt"]}
 
 [project.scripts]
 crawl-docs = "libcrawler.__main__:main"
