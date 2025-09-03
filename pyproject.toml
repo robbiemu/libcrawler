@@ -1,32 +1,41 @@
 [build-system]
-# We remove setuptools-scm because the version is now explicitly sourced from your version.py file.
 requires = [ "setuptools>=61.0", "wheel" ]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "libcrawler"
+dynamic = ["version"]
 description = "A tool to crawl documentation and convert to Markdown."
 authors = [
     { name="Robert Collins", email="roberto.tomas.cuentas@gmail.com" }
 ]
+license = { text = "LGPL-3.0-only" }
 requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
     "Operating System :: OS Independent",
 ]
+# Dependencies are now listed directly here, not in a separate file
+dependencies = [
+    "aiofiles~=24.1.0",
+    "beautifulsoup4~=4.12.3",
+    "datasketch~=1.6.5",
+    "markdownify~=0.13.1",
+    "playwright~=1.49.1",
+    "Requests~=2.32.3"
+]
 
-# This tells the build system that version and dependencies are defined elsewhere.
-dynamic = ["version", "dependencies"]
+[tool.setuptools]
+# This tells the build system to automatically include all package data,
+# removing the need for MANIFEST.in
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["libcrawler.egg_info", "libcrawler.tests"]
 
-# This new section provides the explicit instructions for finding the dynamic fields.
 [tool.setuptools.dynamic]
+# This tells the build system exactly how to find the version
 version = {attr = "libcrawler.version.__version__"}
-dependencies = {file = ["requirements.txt"]}
 
 [project.scripts]
 crawl-docs = "libcrawler.__main__:main"
