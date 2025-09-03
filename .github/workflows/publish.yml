@@ -36,8 +36,8 @@ jobs:
 
     - name: Build package
       run: |
-        # You can use 'python setup.py sdist bdist_wheel' or 'python -m build'
-        python -m build sdist
+        # You would normally do 'python -m build sdist' or 'python setup.py sdist bdist_wheel'
+        python build.py sdist
 
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
